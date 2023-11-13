@@ -2,25 +2,30 @@ const axios = require('axios');
 const fs = require('fs');
 
 const geocodes = [
-    {name: "montreal", loc: "45.51,-73.56"},
-    {name: "troisrivieres", loc: "46.34,-72.54"},
-    {name: "quebec", loc: "46.80,-71.22"},
-    {name: "gatineau", loc: "45.47,-75.82"},
-    {name: "bromont", loc: "45.32,-72.65"},
-    {name: "sherbrooke", loc: "45.40,-71.89"},
-    {name: "parcmauricie", loc: "46.756,-72.810"},
-    {name: "montmegentic", loc: "45.442,-71.133"},
-    {name: "monttremblant", loc: "46.186,-74.614"},
-    {name: "saintcelestin", loc: "46.228,-72.440"},
-    {name: "icar", loc: "45.680,-74.024"},
-    {name: "shkarting", loc: "45.600,-73.138"}
+    {name: "montreal", loc: "45.51,-73.56"}, //OK
+    {name: "trois-rivieres", loc: "46.34,-72.54"}, //OK
+    {name: "quebec", loc: "46.80,-71.22", aqicity: "Quebec City"}, //OK
+    {name: "gatineau", loc: "45.47,-75.82"}, //OK
+    {name: "bromont", loc: "45.32,-72.65", aqicity:"Granby"},
+    {name: "sherbrooke", loc: "45.40,-71.89"}, //OK
+    {name: "parcmauricie", loc: "46.756,-72.810", aqicity:"Shawinigan"}, //OK
+    {name: "montmegentic", loc: "45.442,-71.133", aqicity: "Ditton"},
+    {name: "monttremblant", loc: "46.186,-74.614", aqicity: "Saint-faustin"},
+    {name: "saintcelestin", loc: "46.228,-72.440", aqicity: "trois-rivieres"}, //OK
+    {name: "icar", loc: "45.680,-74.024", aqicity: "Blainville"},
+    {name: "shkarting", loc: "45.600,-73.138", aqicity: "Otterburn Park"}
 ];
 
 const TWC_FORECAST_CONFIG = {
     method: "POST",
     url: 'https://weather.com/api/v1/p/redux-dal',
-    endpoint: "getSunV3HourlyForecastWithHeadersUrlConfig",
-    duration: "2day",
+    endpoint: {
+        alerts: "getSunWeatherAlertHeadlinesUrlConfig",
+        weather: "getSunV3CurrentObservationsUrlConfig",
+        forecast: "getSunV3HourlyForecastWithHeadersUrlConfig",
+        pollen: "getSunIndexPollenDaypartUrlConfig"
+    },
+    forecast_duration: "3day",
     units: "m"
 }
 
@@ -41,20 +46,51 @@ class ApiService {
 }
 
 class FileService {
-    constructor(file){
-        this.file = file;
+    constructor(){
     }
 
-    export(data){
-        const data_json = JSON.stringify(data);
-        fs.writeFile(this.file, data_json, (err) => {
+    createDir(name){
+        if (!fs.existsSync(name)){
+            fs.mkdirSync(name);
+        }
+    }
+
+    export(weather_report){
+        const place = weather_report.place.name;
+        this.createDir("www");
+        this.createDir("www/"+place);
+        const fullpath = "www/"+place+"/"+place+".json";
+
+        fs.writeFile(fullpath, JSON.stringify(weather_report), (err) => {
             if (err) console.log(err);
-            else console.log("Data exported to "+this.file);
+            else console.log("Data exported to "+fullpath);
+        });
+        const html = '<head><meta http-equiv="refresh" content="0; url='+place+'.json" /></head>';
+        fs.writeFile("www/"+place+"/index.html", html, (err) => {
+            if (err) console.log(err);
         });
     }
 }
 
-function buildWeatherReport(forecast, place){
+function getWeatherReport(weather){
+    return {
+        time: weather.validTimeLocal,
+        cond: weather.wxPhraseLong,
+        hum: weather.relativeHumidity,
+        temp: {
+            absolute: weather.temperature,
+            feels_like: weather.temperatureFeelsLike
+        },
+        prec:{
+            rain: weather.precip1Hour,
+            snow: weather.snow1Hour,
+        },
+        uv: weather.uvIndex,
+        wind: weather.windSpeed+"@"+weather.windDirection
+    }
+}
+
+function getForecastReport(forecast){
     var forecast_report = [];
     for(var i = 0; i < forecast.validTimeLocal.length ; i++) {
         forecast_report.push({
@@ -75,37 +111,61 @@ function buildWeatherReport(forecast, place){
             wind: forecast.windSpeed[i]+"@"+forecast.windDirection[i]
         });
     }
+    return forecast_report;
+}
+
+function buildWeatherReport(place, weather, forecast){
     return {
         place: place,
-        forecast: forecast_report
+        weather: getWeatherReport(weather),
+        forecast: getForecastReport(forecast)
     };
 }
 
 function getForecast(response, place){
-    return response.data.dal[TWC_FORECAST_CONFIG.endpoint][
-        "duration:"+TWC_FORECAST_CONFIG.duration+";"+
+    return response.data.dal[TWC_FORECAST_CONFIG.endpoint.forecast][
+        "duration:"+TWC_FORECAST_CONFIG.forecast_duration+";"+
         "geocode:"+place.loc+";"+
         "units:"+TWC_FORECAST_CONFIG.units
     ].data;
 }
 
-new ApiService({
-    method: "POST",
-    url: TWC_FORECAST_CONFIG.url,
-    data: geocodes.map(code => { return {
-        name: TWC_FORECAST_CONFIG.endpoint,
+function getCurrentWeather(response, place){
+    return response.data.dal[TWC_FORECAST_CONFIG.endpoint.weather][
+        "geocode:"+place.loc+";"+
+        "units:"+TWC_FORECAST_CONFIG.units
+    ].data;
+}
+
+function getRequests(){
+    const currentWeatherRequests = geocodes.map(code => { return {
+        name: TWC_FORECAST_CONFIG.endpoint.weather,
         params: {
-            duration: TWC_FORECAST_CONFIG.duration,
             geocode: code.loc,
             units: TWC_FORECAST_CONFIG.units
         }
-    }})
+    }});
+    const forecastRequests = geocodes.map(code => { return {
+        name: TWC_FORECAST_CONFIG.endpoint.forecast,
+        params: {
+            duration: TWC_FORECAST_CONFIG.forecast_duration,
+            geocode: code.loc,
+            units: TWC_FORECAST_CONFIG.units
+        }
+    }});
+    console.log(JSON.stringify(currentWeatherRequests.concat(forecastRequests)));
+    return currentWeatherRequests.concat(forecastRequests);
+}
+
+new ApiService({
+    method: "POST",
+    url: TWC_FORECAST_CONFIG.url,
+    data: getRequests()
 }).execute((response) => {
-    console.log(response.data);
     for(const place of geocodes){
+        const weather = getCurrentWeather(response, place);
         const forecast = getForecast(response, place);
-        const weather_report = buildWeatherReport(forecast, place);
-        console.log("Building weather report for "+place.name+"("+place.loc+")");
+        const weather_report = buildWeatherReport(place, weather, forecast);
         new FileService(place.name+".json").export(weather_report);
     }
 })
