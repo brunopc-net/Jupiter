@@ -1,5 +1,5 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs-extra');
 
 const places = [
     //City
@@ -181,7 +181,7 @@ new ApiService(weather_req).execute((resp) => {
 
         const weather_data = resp.data.dal[TWC_API_CONFIG.endpoint.weather][geocode+";"+units].data;
         const forecast_data = resp.data.dal[TWC_API_CONFIG.endpoint.forecast][duration+";"+geocode+";"+units].data;
-        
+
         const weather_report = new WeatherReport(place, weather_data, forecast_data);
         new FileService(place.name).export(weather_report);
     }
