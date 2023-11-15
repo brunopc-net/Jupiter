@@ -1,22 +1,35 @@
 const axios = require('axios');
 const fs = require('fs');
 
-const geocodes = [
-    {name: "montreal", loc: "45.51,-73.56"}, //OK
-    {name: "trois-rivieres", loc: "46.34,-72.54"}, //OK
-    {name: "quebec", loc: "46.80,-71.22", aqicity: "Quebec City"}, //OK
-    {name: "gatineau", loc: "45.47,-75.82"}, //OK
-    {name: "bromont", loc: "45.32,-72.65", aqicity:"Granby"},
-    {name: "sherbrooke", loc: "45.40,-71.89"}, //OK
-    {name: "parcmauricie", loc: "46.756,-72.810", aqicity:"Shawinigan"}, //OK
-    {name: "montmegentic", loc: "45.442,-71.133", aqicity: "Ditton"},
-    {name: "monttremblant", loc: "46.186,-74.614", aqicity: "Saint-faustin"},
-    {name: "saintcelestin", loc: "46.228,-72.440", aqicity: "trois-rivieres"}, //OK
-    {name: "icar", loc: "45.680,-74.024", aqicity: "Blainville"},
-    {name: "shkarting", loc: "45.600,-73.138", aqicity: "Otterburn Park"}
+const places = [
+    //City
+    {name: "city/montreal", loc: "45.51,-73.56"},
+    {name: "city/beloeil", loc: "45.56,-73.21"},
+    {name: "city/saint-hyacinthe", loc: "45.64,-72.95"},
+    {name: "city/granby", loc: "45.41,-72.73"},
+    {name: "city/bromont", loc: "45.29,-72.62"},
+    {name: "city/sherbrooke", loc: "45.40,-71.89"},
+    {name: "city/drummondville", loc: "45.89,-72.50"},
+    {name: "city/quebec", loc: "46.80,-71.22"},
+    {name: "city/shawinigan", loc: "46.756,-72.810"},
+    {name: "city/trois-rivieres", loc: "46.34,-72.54"},
+    {name: "city/sorel-tracy", loc: "46.04,-73.11"},
+    {name: "city/st-jerome", loc: "45.78,-74.01"},
+    {name: "city/gatineau", loc: "45.47,-75.70"},
+    
+    //Park
+    {name: "park/mauricie", loc: "45.442,-71.133"},
+    {name: "park/montmegentic", loc: "45.442,-71.133"},
+    {name: "park/gatineau", loc: "45.47,-75.82"},
+
+    //Karting
+    {name: "karting/sc", loc: "46.228,-72.440"},
+    {name: "karting/icar", loc: "45.680,-74.024"},
+    {name: "karting/sh", loc: "45.600,-73.138"},
+    {name: "karting/tremblant", loc: "46.186,-74.614"}
 ];
 
-const TWC_FORECAST_CONFIG = {
+const TWC_API_CONFIG = {
     method: "POST",
     url: 'https://weather.com/api/v1/p/redux-dal',
     endpoint: {
@@ -38,6 +51,7 @@ class ApiService {
         axios(this.request)
             .then((resp) => {
                 console.log(this.request.method+" request to "+this.request.url);
+                console.log(resp.data);
                 func(resp);
             }).catch(function (error) {
                 console.log(error);
@@ -46,126 +60,129 @@ class ApiService {
 }
 
 class FileService {
-    constructor(){
-    }
-
-    createDir(name){
-        if (!fs.existsSync(name)){
-            fs.mkdirSync(name);
-        }
+    constructor(path){
+        this.dir = "www/"+path;
+        const file_nodes = path.split("/");
+        this.file = file_nodes[file_nodes.length-1]+".json"
     }
 
     export(weather_report){
-        const place = weather_report.place.name;
-        this.createDir("www");
-        this.createDir("www/"+place);
-        const fullpath = "www/"+place+"/"+place+".json";
+        this.createDir();
+        this.exportData(weather_report);
+        this.exportHtml();
+    }
 
+    createDir(){
+        const folders = this.dir.split("/");
+        var path = "";
+        for(const folder of folders){
+            path += folder+"/";
+            !fs.existsSync(path) && fs.mkdirSync(path);
+        }   
+    }
+
+    exportData(weather_report){
+        const fullpath = this.dir+"/"+this.file;
         fs.writeFile(fullpath, JSON.stringify(weather_report), (err) => {
             if (err) console.log(err);
             else console.log("Data exported to "+fullpath);
         });
-        const html = '<head><meta http-equiv="refresh" content="0; url='+place+'.json" /></head>';
-        fs.writeFile("www/"+place+"/index.html", html, (err) => {
+    }
+
+    exportHtml(){
+        const html = '<head><meta http-equiv="refresh" content="0; url='+this.file+'" /></head>';
+        fs.writeFile(this.dir+"/index.html", html, (err) => {
             if (err) console.log(err);
         });
     }
 }
 
-function getWeatherReport(weather){
-    return {
-        time: weather.validTimeLocal,
-        cond: weather.wxPhraseLong,
-        hum: weather.relativeHumidity,
-        temp: {
-            absolute: weather.temperature,
-            feels_like: weather.temperatureFeelsLike
-        },
-        prec:{
-            rain: weather.precip1Hour,
-            snow: weather.snow1Hour,
-        },
-        uv: weather.uvIndex,
-        wind: weather.windSpeed+"@"+weather.windDirection
-    }
-}
+class WeatherReport {
 
-function getForecastReport(forecast){
-    var forecast_report = [];
-    for(var i = 0; i < forecast.validTimeLocal.length ; i++) {
-        forecast_report.push({
-            time: forecast.validTimeLocal[i],
-            cond: forecast.wxPhraseLong[i],
-            hum: forecast.relativeHumidity[i],
+    constructor(place, weather_data, forecast_data){
+        return {
+            place: place,
+            weather: this.buildWeatherReport(weather_data),
+            forecast: this.buildForecastReport(forecast_data)
+        };
+    }
+
+    buildWeatherReport(data){
+        return {
+            time: data.validTimeLocal,
+            cond: data.wxPhraseLong,
+            hum: data.relativeHumidity,
             temp: {
-                absolute: forecast.temperature[i],
-                feels_like: forecast.temperatureFeelsLike[i]
+                absolute: data.temperature,
+                feels_like: data.temperatureFeelsLike
             },
             prec:{
-                chance: forecast.precipChance[i],
-                type: forecast.precipType[i],
-                rain: forecast.qpf[i],
-                snow: forecast.qpfSnow[i],
+                rain: data.precip1Hour,
+                snow: data.snow1Hour,
             },
-            uv: forecast.uvIndex[i],
-            wind: forecast.windSpeed[i]+"@"+forecast.windDirection[i]
-        });
-    }
-    return forecast_report;
-}
-
-function buildWeatherReport(place, weather, forecast){
-    return {
-        place: place,
-        weather: getWeatherReport(weather),
-        forecast: getForecastReport(forecast)
-    };
-}
-
-function getForecast(response, place){
-    return response.data.dal[TWC_FORECAST_CONFIG.endpoint.forecast][
-        "duration:"+TWC_FORECAST_CONFIG.forecast_duration+";"+
-        "geocode:"+place.loc+";"+
-        "units:"+TWC_FORECAST_CONFIG.units
-    ].data;
-}
-
-function getCurrentWeather(response, place){
-    return response.data.dal[TWC_FORECAST_CONFIG.endpoint.weather][
-        "geocode:"+place.loc+";"+
-        "units:"+TWC_FORECAST_CONFIG.units
-    ].data;
-}
-
-function getRequests(){
-    const currentWeatherRequests = geocodes.map(code => { return {
-        name: TWC_FORECAST_CONFIG.endpoint.weather,
-        params: {
-            geocode: code.loc,
-            units: TWC_FORECAST_CONFIG.units
+            uv: data.uvIndex,
+            wind: data.windSpeed+"@"+data.windDirection
         }
-    }});
-    const forecastRequests = geocodes.map(code => { return {
-        name: TWC_FORECAST_CONFIG.endpoint.forecast,
-        params: {
-            duration: TWC_FORECAST_CONFIG.forecast_duration,
-            geocode: code.loc,
-            units: TWC_FORECAST_CONFIG.units
+    }
+
+    buildForecastReport(data){
+        var forecast_report = [];
+        for(var i = 0; i < data.validTimeLocal.length ; i++) {
+            forecast_report.push({
+                time: data.validTimeLocal[i],
+                cond: data.wxPhraseLong[i],
+                hum: data.relativeHumidity[i],
+                temp: {
+                    absolute: data.temperature[i],
+                    feels_like: data.temperatureFeelsLike[i]
+                },
+                prec:{
+                    chance: data.precipChance[i],
+                    type: data.precipType[i],
+                    rain: data.qpf[i],
+                    snow: data.qpfSnow[i],
+                },
+                uv: data.uvIndex[i],
+                wind: data.windSpeed[i]+"@"+data.windDirection[i]
+            });
         }
-    }});
-    console.log(JSON.stringify(currentWeatherRequests.concat(forecastRequests)));
-    return currentWeatherRequests.concat(forecastRequests);
+        return forecast_report;
+    }
 }
 
-new ApiService({
-    method: "POST",
-    url: TWC_FORECAST_CONFIG.url,
-    data: getRequests()
-}).execute((response) => {
-    for(const place of geocodes){
-        const weather = getCurrentWeather(response, place);
-        const forecast = getForecast(response, place);
-        const weather_report = buildWeatherReport(place, weather, forecast);
-        new FileService(place.name+".json").export(weather_report);
+const currentWeatherRequests = places.map(code => { return {
+    name: TWC_API_CONFIG.endpoint.weather,
+    params: {
+        geocode: code.loc,
+        units: TWC_API_CONFIG.units
     }
-})
+}});
+
+const forecastRequests = places.map(code => { return {
+    name: TWC_API_CONFIG.endpoint.forecast,
+    params: {
+        duration: TWC_API_CONFIG.forecast_duration,
+        geocode: code.loc,
+        units: TWC_API_CONFIG.units
+    }
+}});
+
+const weather_req = {
+    method: TWC_API_CONFIG.method,
+    url: TWC_API_CONFIG.url,
+    data: currentWeatherRequests.concat(forecastRequests)
+};
+
+new ApiService(weather_req).execute((resp) => {
+    for(const place of places){
+        const duration = "duration:"+TWC_API_CONFIG.forecast_duration;
+        const geocode = "geocode:"+place.loc;
+        const units = "units:"+TWC_API_CONFIG.units;
+
+        const weather_data = resp.data.dal[TWC_API_CONFIG.endpoint.weather][geocode+";"+units].data;
+        const forecast_data = resp.data.dal[TWC_API_CONFIG.endpoint.forecast][duration+";"+geocode+";"+units].data;
+        
+        const weather_report = new WeatherReport(place, weather_data, forecast_data);
+        new FileService(place.name).export(weather_report);
+    }
+});
