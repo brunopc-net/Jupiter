@@ -100,16 +100,20 @@ class WeatherReport {
                 data.precip1Hour,
                 data.snow1Hour
             ),
-            uv: data.uvIndex,
+            uv: this.buildUvReport(data.uvIndex),
             wind: data.windSpeed+"@"+data.windDirection,
-            pressure: data.pressureMeanSeaLevel
+            pressure: this.buildPressureReport(data.pressureMeanSeaLevel),
+            air: this.buildAirReport(
+                data.temperature,
+                data.relativeHumidity,
+                data.pressureMeanSeaLevel
+            )
         }
     }
 
     buildForecastReport(data){
         var forecast_report = [];
         for(var i = 0; i < data.validTimeLocal.length ; i++) {
-            const feels_like = data.temperatureFeelsLike[i];
             forecast_report.push({
                 time: data.validTimeLocal[i],
                 cond: data.wxPhraseLong[i],
@@ -126,7 +130,12 @@ class WeatherReport {
                 ),
                 uv: this.buildUvReport(data.uvIndex[i]),
                 wind: data.windSpeed[i]+"@"+data.windDirection[i],
-                pressure: data.pressureMeanSeaLevel[i]
+                pressure: this.buildPressureReport(data.pressureMeanSeaLevel[i]),
+                air: this.buildAirReport(
+                    data.temperature[i],
+                    data.relativeHumidity[i],
+                    data.pressureMeanSeaLevel[i]
+                )
             });
         }
         return forecast_report;
@@ -182,6 +191,27 @@ class WeatherReport {
                 level: getAlertLevel(uv, thresholds.uv)
             }
         };
+    }
+
+    buildPressureReport(pressure){
+        return {
+            hpa: pressure,
+            atm: Math.round(pressure/1013.25*10000)/10000
+        };
+    }
+
+    buildAirReport(temp, hum, pressure){
+        const saturation_vapor_pressure = 6.1078*Math.pow(10, (7.5*temp)/(temp+237.3));
+        const press_vapor = saturation_vapor_pressure*(hum/100);
+        const press_air = pressure-press_vapor;
+        const temp_kelvin = 273.15+temp;
+        const air_density = ((press_air/(287.058*temp_kelvin))+(press_vapor/(461.495*temp_kelvin)))*100;
+        return {
+            density: {
+                absolute: Math.round(air_density*10000)/10000,
+                relative: Math.round((air_density/1.225)*1000)/1000
+            }
+        }
     }
 }
 
