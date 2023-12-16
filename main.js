@@ -4,18 +4,19 @@ const fs = require('fs-extra');
 const places = [
     //City
     {name: "city/montreal", loc: "45.51,-73.56"},
-    {name: "city/beloeil", loc: "45.56,-73.21"},
-    {name: "city/saint-hyacinthe", loc: "45.64,-72.95"},
-    {name: "city/granby", loc: "45.41,-72.73"},
-    {name: "city/bromont", loc: "45.29,-72.62"},
-    {name: "city/sherbrooke", loc: "45.40,-71.89"},
-    {name: "city/drummondville", loc: "45.89,-72.50"},
     {name: "city/quebec", loc: "46.80,-71.22"},
-    {name: "city/shawinigan", loc: "46.756,-72.810"},
-    {name: "city/trois-rivieres", loc: "46.34,-72.54"},
-    {name: "city/sorel-tracy", loc: "46.04,-73.11"},
-    {name: "city/st-jerome", loc: "45.78,-74.01"},
     {name: "city/gatineau", loc: "45.47,-75.70"},
+    {name: "city/sherbrooke", loc: "45.40,-71.89"},
+    {name: "city/trois-rivieres", loc: "46.34,-72.54"},
+    {name: "city/st-jerome", loc: "45.78,-74.01"},
+    {name: "city/drummondville", loc: "45.89,-72.50"},
+    {name: "city/granby", loc: "45.41,-72.73"},
+    {name: "city/saint-hyacinthe", loc: "45.64,-72.95"},
+    {name: "city/shawinigan", loc: "46.756,-72.810"},
+    {name: "city/boucherville", loc: "45.59,-73.45"},
+    {name: "city/sorel-tracy", loc: "46.04,-73.11"},
+    {name: "city/beloeil", loc: "45.56,-73.21"},
+    {name: "city/bromont", loc: "45.29,-72.62"},
     
     //Park
     {name: "park/mauricie", loc: "45.442,-71.133"},
@@ -61,15 +62,14 @@ class ApiService {
 
 class FileService {
     constructor(path){
-        this.dir = "www/"+path;
         const file_nodes = path.split("/");
-        this.file = file_nodes[file_nodes.length-1]+".json"
+        this.file = file_nodes.pop()+".json"
+        this.dir = "www/"+file_nodes.join('');
     }
 
     export(weather_report){
         this.createDir();
         this.exportData(weather_report);
-        this.exportHtml();
     }
 
     createDir(){
@@ -86,13 +86,6 @@ class FileService {
         fs.writeFile(fullpath, JSON.stringify(weather_report), (err) => {
             if (err) console.log(err);
             else console.log("Data exported to "+fullpath);
-        });
-    }
-
-    exportHtml(){
-        const html = '<head><meta http-equiv="refresh" content="0; url='+this.file+'" /></head>';
-        fs.writeFile(this.dir+"/index.html", html, (err) => {
-            if (err) console.log(err);
         });
     }
 }
@@ -116,12 +109,13 @@ class WeatherReport {
                 absolute: data.temperature,
                 feels_like: data.temperatureFeelsLike
             },
-            prec:{
-                rain: data.precip1Hour,
-                snow: data.snow1Hour,
+            prec:(data.snow1Hour + data.precip1Hour) === 0 ? {} : {
+                type: data.snow1Hour > data.precip1Hour ? "snow": "rain",
+                amount: data.snow1Hour > data.precip1Hour ? data.snow1Hour: data.precip1Hour,
             },
             uv: data.uvIndex,
-            wind: data.windSpeed+"@"+data.windDirection
+            wind: data.windSpeed+"@"+data.windDirection,
+            pressure: data.pressureMeanSeaLevel
         }
     }
 
@@ -143,7 +137,8 @@ class WeatherReport {
                     snow: data.qpfSnow[i],
                 },
                 uv: data.uvIndex[i],
-                wind: data.windSpeed[i]+"@"+data.windDirection[i]
+                wind: data.windSpeed[i]+"@"+data.windDirection[i],
+                pressure: data.pressureMeanSeaLevel[i]
             });
         }
         return forecast_report;
@@ -179,10 +174,10 @@ new ApiService(weather_req).execute((resp) => {
         const geocode = "geocode:"+place.loc;
         const units = "units:"+TWC_API_CONFIG.units;
 
-        const weather_data = resp.data.dal[TWC_API_CONFIG.endpoint.weather][geocode+";"+units].data;
-        const forecast_data = resp.data.dal[TWC_API_CONFIG.endpoint.forecast][duration+";"+geocode+";"+units].data;
+        const weather = resp.data.dal[TWC_API_CONFIG.endpoint.weather][geocode+";"+units];
+        const forecast = resp.data.dal[TWC_API_CONFIG.endpoint.forecast][duration+";"+geocode+";"+units];
 
-        const weather_report = new WeatherReport(place, weather_data, forecast_data);
+        const weather_report = new WeatherReport(place, weather.data, forecast.data);
         new FileService(place.name).export(weather_report);
     }
 });
