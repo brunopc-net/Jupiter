@@ -146,25 +146,21 @@ class WeatherReport {
             absolute: temp,
             feels_like: feels_like,
         };
-        return feels_like < 20 ? {
-            ...tempReport, alert: {
-                type: "🥶",
-                level: getAlertLevel(feels_like, thresholds.temp.cold)
-            }
-        } : {
-            ...tempReport, alert: {
-                type: "🥵",
-                level: getAlertLevel(feels_like, thresholds.temp.heat)
-            }
+        const alertLevelCold = getAlertLevel(feels_like, thresholds.temp.cold);
+        if(alertLevelCold !== "🟢") return {
+            ...tempReport, alert: "🥶"+alertLevelCold
         }
+        const alertLevelHeat = getAlertLevel(feels_like, thresholds.temp.heat);
+        if(alertLevelHeat !== "🟢") return {
+            ...tempReport, alert: "🥵"+alertLevelHeat
+        }
+        return tempReport
     }
 
     buildPrecReport(chance, type, rain, snow){
         const total_prec = rain + snow;
-        if(total_prec === 0 || chance < 20) return { 
-            type: "none",
-            alert_level: "🟢"
-        }
+        if(total_prec === 0 || chance < 20)
+            return "none";
         const precReport = {
             chance: chance,
             type: type.replace("precip","mixed"),
@@ -172,24 +168,20 @@ class WeatherReport {
             snow: snow
         }
         return type === "snow" ? {
-            ...precReport, alert: {
-                type: "🌨️",
-                level: getAlertLevel(total_prec, thresholds.precp.snow)
-            }
+            ...precReport,
+            alert: "🌨️"+getAlertLevel(total_prec, thresholds.precp.snow)
         } : {
-            ...precReport, alert: {
-                type: "🌧️",
-                level: getAlertLevel(total_prec, thresholds.precp.rain)
-            }
+            ...precReport,
+            alert: "🌧️"+getAlertLevel(total_prec, thresholds.precp.rain)
         };
     }
 
     buildUvReport(uv){
+        if(uv === 0)
+            return "none";
         return {
             index: uv,
-            alert: {
-                level: getAlertLevel(uv, thresholds.uv)
-            }
+            alert: "☀️"+getAlertLevel(uv, thresholds.uv)
         };
     }
 
