@@ -133,13 +133,21 @@ class WeatherReport {
     }
 
     buildTempReport(temp, feels_like){
-        return {
+        const tempReport = {
             absolute: temp,
             feels_like: feels_like,
-            alert_level: feels_like < 20 ?
-                getAlertLevel(feels_like, thresholds.temp.cold):
-                getAlertLevel(feels_like, thresholds.temp.heat)
         };
+        return feels_like < 20 ? {
+            ...tempReport, alert: {
+                type: "🥶",
+                level: getAlertLevel(feels_like, thresholds.temp.cold)
+            }
+        } : {
+            ...tempReport, alert: {
+                type: "🥵",
+                level: getAlertLevel(feels_like, thresholds.temp.heat)
+            }
+        }
     }
 
     buildPrecReport(chance, type, rain, snow){
@@ -148,21 +156,31 @@ class WeatherReport {
             type: "none",
             alert_level: "🟢"
         }
-        return {
+        const precReport = {
             chance: chance,
             type: type.replace("precip","mixed"),
             rain: rain,
-            snow: snow,
-            alert_level: type === "snow" ? 
-                getAlertLevel(total_prec, thresholds.precp.snow):
-                getAlertLevel(total_prec, thresholds.precp.rain)
+            snow: snow
+        }
+        return type === "snow" ? {
+            ...precReport, alert: {
+                type: "🌨️",
+                level: getAlertLevel(total_prec, thresholds.precp.snow)
+            }
+        } : {
+            ...precReport, alert: {
+                type: "🌧️",
+                level: getAlertLevel(total_prec, thresholds.precp.rain)
+            }
         };
     }
 
     buildUvReport(uv){
         return {
             index: uv,
-            alert_level: getAlertLevel(uv, thresholds.uv)
+            alert: {
+                level: getAlertLevel(uv, thresholds.uv)
+            }
         };
     }
 }
