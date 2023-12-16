@@ -1,47 +1,9 @@
 const axios = require('axios');
 const fs = require('fs-extra');
 
-const places = [
-    //City
-    {name: "city/montreal", loc: "45.51,-73.56"},
-    {name: "city/quebec", loc: "46.80,-71.22"},
-    {name: "city/gatineau", loc: "45.47,-75.70"},
-    {name: "city/sherbrooke", loc: "45.40,-71.89"},
-    {name: "city/trois-rivieres", loc: "46.34,-72.54"},
-    {name: "city/st-jerome", loc: "45.78,-74.01"},
-    {name: "city/drummondville", loc: "45.89,-72.50"},
-    {name: "city/granby", loc: "45.41,-72.73"},
-    {name: "city/saint-hyacinthe", loc: "45.64,-72.95"},
-    {name: "city/shawinigan", loc: "46.756,-72.810"},
-    {name: "city/boucherville", loc: "45.59,-73.45"},
-    {name: "city/sorel-tracy", loc: "46.04,-73.11"},
-    {name: "city/beloeil", loc: "45.56,-73.21"},
-    {name: "city/bromont", loc: "45.29,-72.62"},
-    
-    //Park
-    {name: "park/mauricie", loc: "45.442,-71.133"},
-    {name: "park/montmegentic", loc: "45.442,-71.133"},
-    {name: "park/gatineau", loc: "45.47,-75.82"},
-
-    //Karting
-    {name: "karting/sc", loc: "46.228,-72.440"},
-    {name: "karting/icar", loc: "45.680,-74.024"},
-    {name: "karting/sh", loc: "45.600,-73.138"},
-    {name: "karting/tremblant", loc: "46.186,-74.614"}
-];
-
-const TWC_API_CONFIG = {
-    method: "POST",
-    url: 'https://weather.com/api/v1/p/redux-dal',
-    endpoint: {
-        alerts: "getSunWeatherAlertHeadlinesUrlConfig",
-        weather: "getSunV3CurrentObservationsUrlConfig",
-        forecast: "getSunV3HourlyForecastWithHeadersUrlConfig",
-        pollen: "getSunIndexPollenDaypartUrlConfig"
-    },
-    forecast_duration: "3day",
-    units: "m"
-}
+const places = require('./config/places');
+const thresholds = require('./config/thresholds');
+const twn_request = require('./config/twn_request');
 
 class ApiService {
     constructor(request){
@@ -90,6 +52,27 @@ class FileService {
     }
 }
 
+function between(metric, threshold1, threshold2){
+    return (metric >= threshold1 && metric < threshold2) ||
+           (metric <= threshold1 && metric > threshold2);
+}
+
+function getAlertLevel(metric, thresholds){
+    if((thresholds[0] < thresholds[1] && metric <= thresholds[0]) ||
+       (thresholds[0] > thresholds[1] && metric >  thresholds[0]))
+        return "🟢";
+    if(between(metric, thresholds[0], thresholds[1]))
+        return "🟡";
+    if(between(metric, thresholds[1], thresholds[2]))
+        return "🟠";
+    if(between(metric, thresholds[2], thresholds[3]))
+        return "🔴";
+    if(between(metric, thresholds[3], thresholds[4]))
+        return "🟣";
+
+    return "💀";
+}
+
 class WeatherReport {
 
     constructor(place, weather_data, forecast_data){
@@ -101,18 +84,22 @@ class WeatherReport {
     }
 
     buildWeatherReport(data){
+        var prec_type = data.snow1Hour > data.precip1Hour ? "snow": "rain";
+        if (data.precip1Hour > 0) prec_type = "mixed";
         return {
             time: data.validTimeLocal,
             cond: data.wxPhraseLong,
             hum: data.relativeHumidity,
-            temp: {
-                absolute: data.temperature,
-                feels_like: data.temperatureFeelsLike
-            },
-            prec:(data.snow1Hour + data.precip1Hour) === 0 ? {} : {
-                type: data.snow1Hour > data.precip1Hour ? "snow": "rain",
-                amount: data.snow1Hour > data.precip1Hour ? data.snow1Hour: data.precip1Hour,
-            },
+            temp: this.buildTempReport(
+                data.temperature,
+                data.temperatureFeelsLike
+            ),
+            prec: this.buildPrecReport(
+                100,
+                prec_type,
+                data.precip1Hour,
+                data.snow1Hour
+            ),
             uv: data.uvIndex,
             wind: data.windSpeed+"@"+data.windDirection,
             pressure: data.pressureMeanSeaLevel
@@ -122,60 +109,95 @@ class WeatherReport {
     buildForecastReport(data){
         var forecast_report = [];
         for(var i = 0; i < data.validTimeLocal.length ; i++) {
+            const feels_like = data.temperatureFeelsLike[i];
             forecast_report.push({
                 time: data.validTimeLocal[i],
                 cond: data.wxPhraseLong[i],
                 hum: data.relativeHumidity[i],
-                temp: {
-                    absolute: data.temperature[i],
-                    feels_like: data.temperatureFeelsLike[i]
-                },
-                prec:{
-                    chance: data.precipChance[i],
-                    type: data.precipType[i],
-                    rain: data.qpf[i],
-                    snow: data.qpfSnow[i],
-                },
-                uv: data.uvIndex[i],
+                temp: this.buildTempReport(
+                    data.temperature[i],
+                    data.temperatureFeelsLike[i]
+                ),
+                prec: this.buildPrecReport(
+                    data.precipChance[i],
+                    data.precipType[i],
+                    data.qpf[i],
+                    data.qpfSnow[i]
+                ),
+                uv: this.buildUvReport(data.uvIndex[i]),
                 wind: data.windSpeed[i]+"@"+data.windDirection[i],
                 pressure: data.pressureMeanSeaLevel[i]
             });
         }
         return forecast_report;
     }
+
+    buildTempReport(temp, feels_like){
+        return {
+            absolute: temp,
+            feels_like: feels_like,
+            alert_level: feels_like < 20 ?
+                getAlertLevel(feels_like, thresholds.temp.cold):
+                getAlertLevel(feels_like, thresholds.temp.heat)
+        };
+    }
+
+    buildPrecReport(chance, type, rain, snow){
+        const total_prec = rain + snow;
+        if(total_prec === 0 || chance < 20) return { 
+            type: "none",
+            alert_level: "🟢"
+        }
+        return {
+            chance: chance,
+            type: type.replace("precip","mixed"),
+            rain: rain,
+            snow: snow,
+            alert_level: type === "snow" ? 
+                getAlertLevel(total_prec, thresholds.precp.snow):
+                getAlertLevel(total_prec, thresholds.precp.rain)
+        };
+    }
+
+    buildUvReport(uv){
+        return {
+            index: uv,
+            alert_level: getAlertLevel(uv, thresholds.uv)
+        };
+    }
 }
 
 const currentWeatherRequests = places.map(code => { return {
-    name: TWC_API_CONFIG.endpoint.weather,
+    name: twn_request.endpoint.weather,
     params: {
         geocode: code.loc,
-        units: TWC_API_CONFIG.units
+        units: twn_request.units
     }
 }});
 
 const forecastRequests = places.map(code => { return {
-    name: TWC_API_CONFIG.endpoint.forecast,
+    name: twn_request.endpoint.forecast,
     params: {
-        duration: TWC_API_CONFIG.forecast_duration,
+        duration: twn_request.forecast_duration,
         geocode: code.loc,
-        units: TWC_API_CONFIG.units
+        units: twn_request.units
     }
 }});
 
 const weather_req = {
-    method: TWC_API_CONFIG.method,
-    url: TWC_API_CONFIG.url,
+    method: twn_request.method,
+    url: twn_request.url,
     data: currentWeatherRequests.concat(forecastRequests)
 };
 
 new ApiService(weather_req).execute((resp) => {
     for(const place of places){
-        const duration = "duration:"+TWC_API_CONFIG.forecast_duration;
+        const duration = "duration:"+twn_request.forecast_duration;
         const geocode = "geocode:"+place.loc;
-        const units = "units:"+TWC_API_CONFIG.units;
+        const units = "units:"+twn_request.units;
 
-        const weather = resp.data.dal[TWC_API_CONFIG.endpoint.weather][geocode+";"+units];
-        const forecast = resp.data.dal[TWC_API_CONFIG.endpoint.forecast][duration+";"+geocode+";"+units];
+        const weather = resp.data.dal[twn_request.endpoint.weather][geocode+";"+units];
+        const forecast = resp.data.dal[twn_request.endpoint.forecast][duration+";"+geocode+";"+units];
 
         const weather_report = new WeatherReport(place, weather.data, forecast.data);
         new FileService(place.name).export(weather_report);
