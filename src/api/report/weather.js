@@ -216,14 +216,11 @@ class UvReport {
     getSkinReport(skin_type, uv){
         const skin_spf = [ 2.5, 3, 4, 5, 8, 12 ]
         const ttb = Math.floor((200 * skin_spf[skin_type-1].spf)/(3*uv));
-        const report = {
+        return {
             skin_type: skin_type,
             time_to_burn: ttb,
-            level: thresholds.uv.time.getAlertLevel(ttb)
-        };
-        return report.level === "🟢" ? report : {
-            ...report,
-            alert: this.getUvAlert(report.level)
+            level: thresholds.uv.time.getAlertLevel(ttb),
+            alert: this.getUvAlert(thresholds.uv.time.getAlertLevel(ttb))
         }
     }
 
