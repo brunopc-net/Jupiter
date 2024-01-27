@@ -147,10 +147,8 @@ class TempReport {
 class PrecpReport {
     constructor(chance, type, rain, snow){
         const total_prec = rain + snow;
-        if(total_prec === 0 || chance < 25) return {
-            type: "None",
-            level: "🟢"
-        };
+        if(total_prec === 0 || chance < 25)
+            return "🟢";
         return {
             chance: chance,
             type: type.replace("precip","mixed"),
@@ -199,10 +197,12 @@ class PrecpReport {
 
 class UvReport {
     constructor(uv){
+        if(uv === 0)
+            return "🟢";
         return {
             index: uv,
             level: thresholds.uv.index.getAlertLevel(uv),
-            time_to_burn: uv === 0 ? "∞" : [
+            time_to_burn: [
                 this.getSkinReport(1, uv),
                 this.getSkinReport(2, uv),
                 this.getSkinReport(3, uv),
