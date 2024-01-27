@@ -98,27 +98,26 @@ class TempReport {
         return {
             absolute: temp,
             feels_like: feels_like,
-            alert: this.getAlert(feels_like)
+            ...this.getLevel(feels_like)
         };
     }
 
-    getAlert(feels_like){
-        const alertLvl = feels_like <= 20 ? 
+    getLevel(feels_like){
+        const level = feels_like <= 20 ? 
             "🥶"+thresholds.temp.cold.getAlertLevel(feels_like):
             "🥵"+thresholds.temp.heat.getAlertLevel(feels_like);
-        if (alertLvl.includes("🟢")) return {
+        if (level.includes("🟢")) return {
             level: "🟢"
         }
-        return alertLvl.includes("🥶") ? {
-            level: alertLvl,
-            message: this.getColdMessage(alertLvl)
-        } : {
-            level: alertLvl,
-            message: this.getHeatMessage(alertLvl)
-        };
+        return {
+            level: level,
+            alert: level.includes("🥶") ?
+                this.getColdAlert(level) :
+                this.getHeatAlert(level)
+        }
     }
 
-    getHeatMessage(alertLvl){
+    getHeatAlert(alertLvl){
         if(alertLvl.includes("💀"))
             return "No exercicing, stay max cool";
         if(alertLvl.includes("🟣"))
@@ -131,7 +130,7 @@ class TempReport {
             return "Drink proactively";
     }
 
-    getColdMessage(alertLvl){
+    getColdAlert(alertLvl){
         if(alertLvl.includes("💀"))
             return "Extreme cold, stay indoors";
         if(alertLvl.includes("🟣"))
@@ -150,26 +149,28 @@ class PrecpReport {
         const total_prec = rain + snow;
         if(total_prec === 0 || chance < 25) return {
             type: "None",
-            alert: {
-                level: "🟢"
-            }
+            level: "🟢"
         };
         return {
             chance: chance,
             type: type.replace("precip","mixed"),
             rain: rain,
             snow: snow,
-            alert: type === "snow" ? {
-                level: "🌨️"+thresholds.precp.snow.getAlertLevel(total_prec),
-                message: this.getSnowMessage(thresholds.precp.snow.getAlertLevel(total_prec))
-            } : {
-                level: "🌧️"+thresholds.precp.rain.getAlertLevel(total_prec),
-                message: this.getRainMessage(thresholds.precp.rain.getAlertLevel(total_prec))
-            }
+            ...this.getLevel(type, total_prec)
         }
     }
 
-    getSnowMessage(alertLevel){
+    getLevel(type, total_prec){
+       return type === "snow" ? {
+            level: "🌨️"+thresholds.precp.snow.getAlertLevel(total_prec),
+            alert: this.getSnowAlert(thresholds.precp.snow.getAlertLevel(total_prec))
+        } : {
+            level: "🌧️"+thresholds.precp.rain.getAlertLevel(total_prec),
+            alert: this.getRainAlert(thresholds.precp.rain.getAlertLevel(total_prec))
+        }
+    }
+
+    getSnowAlert(alertLevel){
         if(alertLevel.includes("💀"))
             return "Heavy snow storm is expected";
         if(alertLevel.includes("🟣"))
@@ -182,7 +183,7 @@ class PrecpReport {
             return "A bit of snow is expected";
     }
 
-    getRainMessage(alertLevel){
+    getRainAlert(alertLevel){
         if(alertLevel.includes("💀"))
             return "Heavy deluge is expected";
         if(alertLevel.includes("🟣"))
@@ -200,61 +201,33 @@ class UvReport {
     constructor(uv){
         return {
             index: uv,
-            alert: {
-                level: thresholds.uv.index.getAlertLevel(uv),
-                time_to_burn: uv === 0 ? "∞" : [
-                    this.getSkinReport(1, uv),
-                    this.getSkinReport(2, uv),
-                    this.getSkinReport(3, uv),
-                    this.getSkinReport(4, uv),
-                    this.getSkinReport(5, uv),
-                    this.getSkinReport(6, uv)
-                ]
-            }
+            level: thresholds.uv.index.getAlertLevel(uv),
+            time_to_burn: uv === 0 ? "∞" : [
+                this.getSkinReport(1, uv),
+                this.getSkinReport(2, uv),
+                this.getSkinReport(3, uv),
+                this.getSkinReport(4, uv),
+                this.getSkinReport(5, uv),
+                this.getSkinReport(6, uv)
+            ]
         };
     }
 
     getSkinReport(skin_type, uv){
-        const skin_types = [
-            {
-                spf: 2.5,
-                desc: "Very fair skin, white; Always burns, does not tan",
-            },
-            {
-                spf: 3,
-                desc: "Fair skin, white; Burns easily, tans poorly",
-            },
-            {
-                spf: 4,
-                desc: "Fair skin, cream white; Tans after initial burn",
-            },
-            {
-                spf: 5,
-                desc: "Olive skin, typical Mediterranean; Burns minimally, tans easily",
-            },
-            {
-                spf: 8,
-                desc: "Brown skin, typical Middle Eastern skin; Rarely burns, tans darkly easily",
-            },
-            {
-                spf: 15,
-                desc: "Black skin, rarely sun sensitive; Never burns, always tans darkly"
-            }
-        ]
-        const ttb = Math.floor((200 * skin_types[skin_type-1].spf)/(3*uv));
+        const skin_spf = [ 2.5, 3, 4, 5, 8, 12 ]
+        const ttb = Math.floor((200 * skin_spf[skin_type-1].spf)/(3*uv));
         const report = {
             skin_type: skin_type,
-            skin_desc: skin_types[skin_type-1].desc,
             time_to_burn: ttb,
             level: thresholds.uv.time.getAlertLevel(ttb)
         };
         return report.level === "🟢" ? report : {
             ...report,
-            message: this.getUvMessage(report.level)
+            alert: this.getUvAlert(report.level)
         }
     }
 
-    getUvMessage(alertLevel){
+    getUvAlert(alertLevel){
         if(alertLevel.includes("💀"))
             return "Avoid sun";
         if(alertLevel.includes("🟣"))
