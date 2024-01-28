@@ -215,7 +215,7 @@ class UvReport {
 
     getSkinReport(skin_type, uv){
         const skin_spf = [ 2.5, 3, 4, 5, 8, 12 ]
-        const ttb = Math.floor((200 * skin_spf[skin_type-1].spf)/(3*uv));
+        const ttb = Math.floor((200 * skin_spf[skin_type-1])/(3*uv));
         return {
             skin_type: skin_type,
             time_to_burn: ttb,
